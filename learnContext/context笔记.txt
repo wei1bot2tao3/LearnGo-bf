@@ -1,0 +1,61 @@
+什么是Context
+golang特有的来管理多线程上下文、生命周期的设计
+goroutine 有持久性的特性，需要信号量才可以停止
+应用程序是逻辑控制的，逻辑结束时候需要结束逻辑下生产的，需要结束的goroutine
+context每一次都是新建的
+进程内传递是依赖于context.Context
+context核心四个API
+Deadlind :返回过期时间 和bool
+Done：返回一个Channel 用于监听context实例的信号，
+Err：返回一个错误：Canceled正常关闭
+Value 取值
+context可以方便的将信号传递给goroutine，并且在cancel（取消）时，所有context都会收到cancel的信号
+核心方法与功能
+安全传递数据：withValue
+
+父context无法访问子的
+逼不得已的话可以
+放一个map
+	child4 := context.WithValue(parent, "map", map[string]string{})
+	child4_1, cancel := context.WithTimeout(child4, time.Second)
+	defer cancel()
+	m := child4_1.Value("map").(map[string]string)
+	m["key"] = "value1child_1"
+	newm := child4.Value("map").(map[string]string)
+	t.Log(newm["key"])
+
+
+控制链路：withCancel、withDeadine、withTimeout
+都是返回一个可取消的context实例、和取消函数
+WithValue:
+ 设置简直对返回一个新的context的实例
+ 获得一个key/value的context，本context以及后续任意生成的Context都可以获得该key/Value
+可以装任意的内容
+彼此间完全独立
+
+WithCancel：
+WithCancel获得一个可以cacel的Context，在取消时，生成的Context以及关注B Contxte的goroutine同样会取消
+//都是返回一个新的contxte
+
+	context.TODO()
+	//临时起意 TODO()
+	context.Background()
+	//明确直到是干什么的
+直接全取消，衍生出来的context都会取消掉
+
+WithTimeout:
+获得一个计时器到时候就cancel
+
+WithDeadline
+带有一个截止时间的Context ，到截止时间自动取消
+WithTimeout函数接受的是一个相对时间段（time.Duration），
+   timeout := 5 * time.Second
+    ctx, cancel := context.WithTimeout(parentContext, timeout)
+而WithDeadline函数接受的是一个绝对时间点（time.Time）。
+ deadline := time.Now().Add(5 * time.Second)
+
+面试要点：
+用途：上下文传递和控制
+原理：
+父亲如何控制儿子：儿子主动加入到父亲的children里面，父亲只需要遍历就可以
+valueCtx和timeCtx的原理

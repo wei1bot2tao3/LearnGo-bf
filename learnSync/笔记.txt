@@ -1,0 +1,18 @@
+
+Mutex 可以看作锁
+RWMutex可以看作读写锁
+使用时候优先RWMutex
+RWMutex核心四个方法：RLock、RUnLock、Lock、Unlock
+Mutex：Lock、Unlock
+
+double-check
+先读锁 检查一遍
+释放读锁
+加写锁
+在检查一遍
+
+sync.Mutex
+锁的一般实现依赖于
+自旋作为快路径
+等待路径为慢路径
+

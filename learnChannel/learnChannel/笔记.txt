@@ -1,0 +1,86 @@
+什么是Channel
+Channel是用来连接并发的goroutine的。
+一个goroutine通过Channel向另一个goroutine发送消息。
+对应的goroutine通过channel来接收消息。
+
+如何定义Channel
+Channel和map一样、是引用类型。
+基础数据类型 和int、string、map 同等地位。
+var 变量名称 chan 数据类型
+定义一个channel后只接收只发送已经定义的类型。
+必须做实例化 用make
+make（chan 数据类型 【大写】）
+当size不为0的时候 表示Channel是一个有长度的Channel，又称为带缓冲的Channel
+带有buffer的直接允许in不影响out
+不带的必须先out在in
+
+Channel 本质上是一个队列 ：先进先出
+Channel本身是线程安全的
+Channel是数据类型敏感的
+
+Channel 只能通过
+for ...range和for select  遍历
+注意 如果channel没有关闭，并没有其他goroutine能够向channel添加数据，那么range后会报错
+close(intCh)
+range后取出来的是假数据
+o1,ok:=<-intCh
+
+选择Channel
+在多个Channel中选择一个准备好的Channel分支 ，从中去数据并执行对应的分支。
+当没有准备好的Channel是，程序组合并等待。
+	select {
+	case o := <-ch1:
+		fmt.Println("ch1done", o)
+	case o := <-ch2:
+		fmt.Println("ch2done", o)
+		default：
+		都不走那就走这个
+哪个ready走哪个
+一旦close就即可case了
+
+有向性Channel
+ var Chnnelname chan<- 单项进 或关闭
+ var ChannekName chan-> 单项出，
+
+保证存放数据的规格
+
+注意事项
+没有缓冲区的Channel在没有取出的时候程序会在等待。
+channel不能重复关闭
+channel关闭后不能向里面装，但是可以重复取
+非多线程谨慎使用 只写出 不写入
+c := make(chan int, 10)或者不带buffer
+不实例化
+select 在选择Channel时，如果店铺准备好了会随机选择一个
+
+学好Channel的关键点
+带不带缓冲
+不带缓冲：要求收发两端都必须有goroutine，否则就是阻塞
+带缓冲：没满或者没空之前都不会阻塞，但是满了或空了就会阻塞
+满了：阻塞发送者
+空：阻塞接收者
+谁在发
+谁在收
+谁来关
+
+利用channel的思路
+看作队列： 主要是传递数据
+利用阻塞特性：间接控制goroutine或者其他资源的消耗
+
+发布订阅模式
+要确定好发布者中谁来关，因为发布者之间没有通知的
+进程内的事件驱动可以依托于的、channel来实现
+缺陷：
+没有消费组概念：不能说通一个事件被多个goroutine同时消费，有且只能有一个
+无法退回，无法随机消费。
+不支持随机访问、不支持遍历的并发队列
+
+遍历channel指的是：遍历的结果就是接收到的数据
+除非全取出来那才是遍历
+只能遍历一次
+
+实现消息队列
+利用channel来实现一个基于内存的消息队列
+思路：
+1.每一个消费者订阅时候创建一个channel
+
