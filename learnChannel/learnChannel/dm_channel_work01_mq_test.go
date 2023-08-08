@@ -3,6 +3,6 @@ package learnChannel
 import "testing"
 
 // Test
-func TestOK(t *testing.T) {
+func TestWork1(t *testing.T) {
 
 }
