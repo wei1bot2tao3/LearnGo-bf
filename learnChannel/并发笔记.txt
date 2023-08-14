@@ -126,6 +126,8 @@ Broadcast:广播给所有在这个condWait的routine
 Signal:只发送一条信息，只唤醒一个在这个condWait 的routine
 一定要 定义不然会空指针
 s.cCond = sync.NewCond(&s.lock)
+
+
 案例：
 eg09
 sync.Map
