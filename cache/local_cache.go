@@ -147,6 +147,17 @@ func (b *BuildInMapCahe) Delete(context context.Context, key string) error {
 	return nil
 }
 
+func (b *BuildInMapCahe) LoadAndDelete(context context.Context, key string) (any, error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	val, ok := b.data[key]
+	if !ok {
+		return nil, errKeyNotFound
+	}
+	b.delete(key)
+	return val.val, nil
+}
+
 func (i *item) deadlineBefore(t time.Time) bool {
 	return i.deadline.IsZero() && i.deadline.Before(t)
 }

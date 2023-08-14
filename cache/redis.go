@@ -39,3 +39,8 @@ func (r *RedisCache) Delete(context context.Context, key string) error {
 	_, err := r.client.Del(context, key).Result()
 	return err
 }
+
+func (r *RedisCache) LoadAndDelete(context context.Context, key string) (any, error) {
+
+	return r.client.GetDel(context, key).Result()
+}

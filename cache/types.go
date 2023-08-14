@@ -10,6 +10,7 @@ type Cache interface {
 	//Set(context context.Context ,key string, val []byte, expiration time.Duration)
 	Get(context context.Context, key string) (any, error)
 	Delete(context context.Context, key string) error
+	LoadAndDelete(context context.Context, key string) (any, error)
 }
 
 type CacheV2 interface {
