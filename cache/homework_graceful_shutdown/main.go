@@ -17,6 +17,7 @@ func main() {
 	s2 := service.NewServer("admin", "localhost:8081")
 	app := service.NewApp([]*service.Server{s1, s2}, service.WithShutdownCallbacks(StoreCacheToDBCallback))
 	app.StartAndServe()
+	time.Sleep(100 * time.Second)
 }
 
 func StoreCacheToDBCallback(ctx context.Context) {
