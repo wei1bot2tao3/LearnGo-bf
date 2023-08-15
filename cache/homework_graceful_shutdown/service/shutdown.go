@@ -37,7 +37,10 @@ type App struct {
 
 // NewApp 创建 App 实例，注意设置默认值，同时使用这些选项
 func NewApp(servers []*Server, opts ...Option) *App {
-	panic("implement me")
+	return &App{
+		servers: servers,
+	}
+
 }
 
 // StartAndServe 你主要要实现这个方法

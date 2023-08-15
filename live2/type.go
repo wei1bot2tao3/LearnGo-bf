@@ -28,6 +28,7 @@ type Queue[T any] interface {
 
 	In(ctx context.Context, val T) error
 	Out(ctx context.Context) (T, error)
+	IsEmpty() bool
 
 	// 瞬时的
 	// IsEmpty() bool
@@ -37,5 +38,5 @@ type Queue[T any] interface {
 
 	// InV2(timeout time.Duration, val T) error
 	// Out(ctx context.Context) (T, error)
-	// IsEmpty() bool
+
 }
