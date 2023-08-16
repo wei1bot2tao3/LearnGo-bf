@@ -10,6 +10,9 @@ github.com/dgryski/go-rendezvous
 # github.com/golang/mock v1.6.0
 ## explicit; go 1.11
 github.com/golang/mock/gomock
+# github.com/google/uuid v1.3.0
+## explicit
+github.com/google/uuid
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
