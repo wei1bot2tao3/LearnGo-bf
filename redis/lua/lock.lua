@@ -11,5 +11,5 @@ if val==false then
     return redis.call('set',KEYS[1],'EX',ARGV[1],ARGV[2])
 elseif val==ARGV[1] then
     -- 你上次加锁成功
-
+math
 end
