@@ -3,6 +3,7 @@ package redis
 import (
 	"LearnGo/cache/mocks"
 	"context"
+	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -412,4 +413,72 @@ func TestLock_e2e_Refresh(t *testing.T) {
 			tc.after(t)
 		})
 	}
+}
+
+// 使用续约
+func ExampleLock_Refresh() {
+	// 加锁成功 你拿到你的Lock
+	var l Lock
+	ch := make(chan struct{})
+	errChan := make(chan error)
+	timeOutChan := make(chan struct{}, 1)
+	go func() {
+		// 每过10秒给你一个信号
+		// 间隔多久续约一次
+		ticker := time.NewTicker(time.Second * 10)
+		timeoutretry := 0
+		for {
+
+			select {
+			case <-ticker.C:
+				ctx, cannel := context.WithTimeout(context.Background(), time.Second)
+				err := l.Refresh(ctx)
+				if err == context.DeadlineExceeded {
+					timeOutChan <- struct{}{}
+					continue
+				}
+				if err != nil {
+					errChan <- err
+					//记得关闭chanel
+					return
+				}
+				cannel()
+			case <-timeOutChan:
+				timeoutretry++
+				if timeoutretry > 10 {
+					errChan <- context.DeadlineExceeded
+					return
+				}
+				ctx, cannel := context.WithTimeout(context.Background(), time.Second)
+				err := l.Refresh(ctx)
+
+				if err == context.DeadlineExceeded {
+					timeOutChan <- struct{}{}
+					continue
+				}
+				if err != nil {
+					errChan <- err
+					//记得关闭chanel
+					return
+				}
+				cannel()
+
+			case <-ch:
+				//
+				l.Unlock(context.Background())
+				return
+			}
+
+		}
+	}()
+	//
+	fmt.Println("业务执行中")
+	// 你在执行业务时候要在中间处理errchan
+	// 循环处理
+	// 每一步都处理
+
+	//假设你业务结束了你怎么退出续约
+	fmt.Println("业务执行完成了")
+	ch <- struct{}{}
+	//
 }

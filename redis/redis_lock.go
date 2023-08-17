@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"time"
@@ -58,35 +59,29 @@ type Lock struct {
 	key        string
 	val        string
 	expiration time.Duration
+	unlockChan chan struct{}
 }
 
 func (l *Lock) Unlock(ctx context.Context) error {
 	res, err := l.client.Eval(ctx, luaUnlcok, []string{l.key}, l.val).Int64()
-	if err == redis.Nil {
-		return ErrLockNotHold
-	}
+	defer func() {
+		//close(l.unlockChan)
+		select {
+		case l.unlockChan <- struct{}{}:
+		default:
+			// 说明没有人调用 AutoRefresh
+		}
+	}()
+	//if err == redis.Nil {
+	//	return ErrLockNotHold
+	//}
 	if err != nil {
 		return err
 	}
-
 	if res != 1 {
 		return ErrLockNotHold
 	}
 	return nil
-	// 先判断这把锁是不是我的锁
-	//使用
-	//
-	////把键值对删掉
-	//cnt, err := l.client.Del(ctx, l.key).Result()
-	//if err != nil {
-	//	return err
-	//}
-	//if cnt != 1 {
-	//	//这个地方代表你的锁过期了
-	//
-	//	return ErrLockNotExist
-	//}
-	//return nil
 }
 
 func (l *Lock) Refresh(ctx context.Context) error {
@@ -103,4 +98,73 @@ func (l *Lock) Refresh(ctx context.Context) error {
 		return ErrLockNotHold
 	}
 	return nil
+}
+func (l *Lock) AutoRefresh(interval time.Duration, timeout time.Duration) error {
+	timeoutChan := make(chan struct{}, 1)
+	// 间隔多久续约一次
+	ticker := time.NewTicker(interval)
+	for {
+		select {
+		case <-ticker.C:
+			// 刷新的超时时间怎么设置
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			// 出现了 error 了怎么办？
+			err := l.Refresh(ctx)
+			cancel()
+			if errors.Is(err, context.DeadlineExceeded) {
+				timeoutChan <- struct{}{}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		case <-timeoutChan:
+			// 刷新的超时时间怎么设置
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			// 出现了 error 了怎么办？
+			err := l.Refresh(ctx)
+			cancel()
+			if errors.Is(err, context.DeadlineExceeded) {
+				timeoutChan <- struct{}{}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+
+		case <-l.unlockChan:
+			return nil
+		}
+	}
+}
+
+// Lock 带自动重试的Lock
+func (c *Client) Lock(ctx context.Context, key string, expiration time.Duration, retry RetryStrategy) (*Lock, error) {
+
+	var timer *time.Timer
+
+	for {
+		//在这里重试
+		lctx,cannel:=context.WithTimeout(ctx,time.Second*3
+		c.TryLock(lctx,key,expiration)
+		cannel()
+		intreval, ok := retry.Next()
+		if !ok {
+			return nil, fmt.Errorf("rrdis-lock: 超出重试限制,%w", ErrFailedfToPreemptlock)
+		}
+		if timer == nil {
+			timer = time.NewTimer(intreval)
+		}else {
+			timer.Reset(intreval)
+		}
+		select {
+		case <-timer.C:
+
+		case <-ctx.Done():
+			return nil,ctx.Err()
+
+
+		}
+	}
+
 }
