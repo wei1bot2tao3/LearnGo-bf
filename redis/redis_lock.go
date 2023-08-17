@@ -14,7 +14,8 @@ var (
 	ErrLockNotExist         = errors.New("redis-lock:锁不存在")
 	ErrLockNotHold          = errors.New("redis-lock:你没有持有锁")
 	//go:embed lua/unlock.lua
-	luaUnlcok string
+	luaUnlcok  string
+	luaRefresh string
 )
 
 // Client 对redis.Cmdable二次封装
@@ -84,4 +85,8 @@ func (l *Lock) Unlock(ctx context.Context) error {
 	//	return ErrLockNotExist
 	//}
 	//return nil
+}
+
+func Refresh(ctx context.Context) error {
+
 }
