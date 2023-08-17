@@ -198,8 +198,10 @@ func TestLock_jc_TryLock(t *testing.T) {
 			},
 			key: "key2",
 			wantlockr: &Lock{
-				key: "key2",
+				key:        "key2",
+				expiration: 3 * time.Second,
 			},
+			expiration: time.Second * 3,
 		},
 		{
 			// 加锁成功
@@ -215,16 +217,17 @@ func TestLock_jc_TryLock(t *testing.T) {
 			},
 			key: "key2",
 			wantlockr: &Lock{
-				key: "key2",
-				//expiration: time.Minute,
+				key:        "key2",
+				expiration: time.Second * 3,
 			},
+			expiration: time.Second * 3,
 		},
 	}
 	client := NewClient(rdb)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 			defer cancel()
 			lock, err := client.TryLock(ctx, tc.key, tc.expiration)
 			assert.Equal(t, tc.wantErr, err)
@@ -234,7 +237,7 @@ func TestLock_jc_TryLock(t *testing.T) {
 			assert.Equal(t, tc.wantlockr.key, lock.key)
 			assert.NotEmpty(t, lock.val)
 			assert.NotNil(t, lock.client)
-
+			assert.Equal(t, tc.wantlockr.expiration, lock.expiration)
 			tc.after(t)
 		})
 	}
@@ -306,4 +309,107 @@ func TestLock_jc_Unlock(t *testing.T) {
 		})
 	}
 
+}
+
+func TestLock_e2e_Refresh(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	testCases := []struct {
+		name   string
+		before func(t *testing.T)
+		after  func(t *testing.T)
+
+		lock *Lock
+
+		wantErr error
+	}{
+		{
+			name: "lock not hold",
+			before: func(t *testing.T) {
+
+			},
+			after: func(t *testing.T) {
+
+			},
+			lock: &Lock{
+				key:        "refresh_key1",
+				val:        "123",
+				client:     rdb,
+				expiration: time.Minute,
+			},
+			wantErr: ErrLockNotHold,
+		},
+		{
+			name: "lock hold by others",
+			before: func(t *testing.T) {
+				// 模拟别人的锁
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer cancel()
+				res, err := rdb.Set(ctx, "refresh_key2", "value2", time.Second*10).Result()
+				require.NoError(t, err)
+				assert.Equal(t, "OK", res)
+			},
+			after: func(t *testing.T) {
+				// 没释放锁，键值对不变
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer cancel()
+				timeout, err := rdb.TTL(ctx, "refresh_key2").Result()
+				require.NoError(t, err)
+				// 如果要是刷新成功了，过期时间是一分钟，即便考虑测试本身的运行时间，timeout > 10s
+				// 也就是，如果 timeout < 10s，说明没刷新成功
+				require.True(t, timeout <= time.Second*10)
+				_, err = rdb.Del(ctx, "refresh_key2").Result()
+				require.NoError(t, err)
+			},
+			lock: &Lock{
+				key:        "refresh_key2",
+				val:        "123",
+				client:     rdb,
+				expiration: time.Minute,
+			},
+			wantErr: ErrLockNotHold,
+		},
+
+		{
+			name: "refreshed",
+			before: func(t *testing.T) {
+				// 模拟你自己加的锁
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer cancel()
+				res, err := rdb.Set(ctx, "refresh_key3", "123", time.Second*10).Result()
+				require.NoError(t, err)
+				assert.Equal(t, "OK", res)
+			},
+			after: func(t *testing.T) {
+				// 没释放锁，键值对不变
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer cancel()
+				timeout, err := rdb.TTL(ctx, "refresh_key3").Result()
+				require.NoError(t, err)
+				// 如果要是刷新成功了，过期时间是一分钟，即便考虑测试本身的运行时间，timeout > 10s
+				require.True(t, timeout > time.Second*50)
+				_, err = rdb.Del(ctx, "refresh_key3").Result()
+				require.NoError(t, err)
+			},
+			lock: &Lock{
+				key:        "refresh_key3",
+				val:        "123",
+				client:     rdb,
+				expiration: time.Minute,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.before(t)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
+			err := tc.lock.Refresh(ctx)
+			assert.Equal(t, tc.wantErr, err)
+			tc.after(t)
+		})
+	}
 }

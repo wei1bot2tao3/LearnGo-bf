@@ -3,3 +3,9 @@
 --- Created by yaofa.
 --- DateTime: 2023/8/17 19:31
 ---
+
+if redis.call('get',KEY[1])==ARGV[1] then
+    -- 确实是你的锁·
+    return redis.call('EXPIRE',KEYS[1],ARGV[2])
+
+end

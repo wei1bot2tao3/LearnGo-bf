@@ -42,9 +42,10 @@ func (c *Client) TryLock(ctx context.Context, key string, expiration time.Durati
 		return nil, ErrFailedfToPreemptlock
 	}
 	return &Lock{
-		client: c.client,
-		key:    key,
-		//val:    val,
+		client:     c.client,
+		key:        key,
+		val:        val,
+		expiration: expiration,
 	}, nil
 }
 
@@ -53,9 +54,10 @@ func (c *Client) TryLock(ctx context.Context, key string, expiration time.Durati
 //}
 
 type Lock struct {
-	client redis.Cmdable
-	key    string
-	val    string
+	client     redis.Cmdable
+	key        string
+	val        string
+	expiration time.Duration
 }
 
 func (l *Lock) Unlock(ctx context.Context) error {
@@ -87,6 +89,18 @@ func (l *Lock) Unlock(ctx context.Context) error {
 	//return nil
 }
 
-func Refresh(ctx context.Context) error {
+func (l *Lock) Refresh(ctx context.Context) error {
 
+	res, err := l.client.Eval(ctx, luaUnlcok, []string{l.key}, l.val, l.expiration.Seconds()).Int64()
+	if err == redis.Nil {
+		return ErrLockNotHold
+	}
+	if err != nil {
+		return err
+	}
+
+	if res != 1 {
+		return ErrLockNotHold
+	}
+	return nil
 }
