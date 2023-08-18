@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"time"
 )
 
@@ -17,11 +18,13 @@ var (
 	//go:embed lua/unlock.lua
 	luaUnlcok  string
 	luaRefresh string
+	luaLock    string
 )
 
 // Client 对redis.Cmdable二次封装
 type Client struct {
 	client redis.Cmdable
+	g      singleflight.Group
 }
 
 func NewClient(client redis.Cmdable) *Client {
@@ -139,32 +142,72 @@ func (l *Lock) AutoRefresh(interval time.Duration, timeout time.Duration) error 
 }
 
 // Lock 带自动重试的Lock
-func (c *Client) Lock(ctx context.Context, key string, expiration time.Duration, retry RetryStrategy) (*Lock, error) {
+func (c *Client) Lock(ctx context.Context, key string, expiration time.Duration, timeout time.Duration, retry RetryStrategy) (*Lock, error) {
 
 	var timer *time.Timer
 
 	for {
 		//在这里重试
-		lctx,cannel:=context.WithTimeout(ctx,time.Second*3
-		c.TryLock(lctx,key,expiration)
+		lctx, cannel := context.WithTimeout(ctx, timeout)
+		val := uuid.New().String()
+		// luaLock这个参数可能是一个用于执行Lua脚本的锁对象。
+		//[]string{key}：这是一个字符串切片，包含一个或多个键（key）的列表。这些键将作为参数传递给Lua脚本。
+		//val：这是一个值（value），可能是一个用于传递给Lua脚本的参数值。
+		res, err := c.client.Eval(lctx, luaLock, []string{key}, val, expiration.Seconds()).Result()
 		cannel()
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		if res == "OK" {
+			return &Lock{
+				client:     c.client,
+				key:        key,
+				val:        val,
+				expiration: expiration,
+				unlockChan: make(chan struct{}, 1),
+			}, nil
+		}
+
 		intreval, ok := retry.Next()
 		if !ok {
 			return nil, fmt.Errorf("rrdis-lock: 超出重试限制,%w", ErrFailedfToPreemptlock)
 		}
 		if timer == nil {
 			timer = time.NewTimer(intreval)
-		}else {
+		} else {
 			timer.Reset(intreval)
 		}
 		select {
 		case <-timer.C:
-
 		case <-ctx.Done():
-			return nil,ctx.Err()
-
-
+			return nil, ctx.Err()
 		}
+	}
+
+}
+
+func (c *Client) SingleflightLockfunc(ctx context.Context, key string, expiration time.Duration, timeout time.Duration, retry RetryStrategy) (*Lock, error) {
+
+	for {
+		flag := false
+		resCh := c.g.DoChan(key, func() (interface{}, error) {
+			flag = true
+			return c.Lock(ctx, key, expiration, timeout, retry)
+		})
+		select {
+		case res := <-resCh:
+			if flag {
+				c.g.Forget(key)
+				if res.Err != nil {
+					return nil, res.Err
+				}
+
+			}
+			return res.Val.(*Lock), nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+
 	}
 
 }

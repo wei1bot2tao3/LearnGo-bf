@@ -482,3 +482,90 @@ func ExampleLock_Refresh() {
 	ch <- struct{}{}
 	//
 }
+
+func TestClient_Lock(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	testCase := []struct {
+		name       string
+		key        string
+		before     func(t *testing.T)
+		after      func(t *testing.T)
+		expiration time.Duration
+		timeout    time.Duration
+		retry      RetryStrategy
+		wantLock   *Lock
+		wantErr    string
+	}{
+		{
+			name: "locked",
+			before: func(t *testing.T) {
+
+			},
+			after: func(t *testing.T) {
+
+			},
+			key:        "lock_key1",
+			expiration: time.Minute,
+			timeout:    time.Second * 3,
+			retry: &FixedIntervalRetryStrategy{
+				Interval: time.Second,
+				MaxCnt:   10,
+			},
+			wantLock: &Lock{
+				key: "lock_key1",
+				val: "vlue1",
+			},
+		},
+		{
+			name: "locked",
+			before: func(t *testing.T) {
+
+			},
+			after: func(t *testing.T) {
+				fmt.Println("after")
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer cancel()
+				timeout, err := rdb.TTL(ctx, "lock_key1").Result()
+				require.NoError(t, err)
+				require.True(t, timeout >= time.Second*50)
+				_, err = rdb.Del(ctx, "lock_key1").Result()
+				require.NoError(t, err)
+			},
+			key:        "lock_key1",
+			expiration: time.Minute,
+			timeout:    time.Second * 3,
+			retry: &FixedIntervalRetryStrategy{
+				Interval: time.Second,
+				MaxCnt:   10,
+			},
+			wantLock: &Lock{
+				key:        "lock_key1",
+				expiration: time.Minute,
+			},
+		},
+	}
+	client := NewClient(rdb)
+	for _, tc := range testCase {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.before(t)
+			lock, err := client.Lock(context.Background(), tc.key, tc.expiration, tc.timeout, tc.retry)
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("return")
+				return
+			}
+			fmt.Println(lock.val)
+			assert.Equal(t, tc.wantLock.key, lock.key)
+			assert.Equal(t, tc.wantLock.expiration, lock.expiration)
+			assert.NotEmpty(t, lock.val)
+			assert.NotNil(t, lock.client)
+			tc.after(t)
+			tc.after(t)
+
+		})
+
+	}
+
+}
