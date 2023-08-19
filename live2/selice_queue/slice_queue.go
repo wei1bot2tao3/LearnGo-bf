@@ -21,36 +21,48 @@ type SliceQueue[T any] struct {
 	dequeue *semaphore.Weighted
 }
 
-// NewSliceQueue  支持阻塞和阻塞超时控制
+// NewSliceQueue  支持阻塞和阻塞超时控制 (math.MaxInt64)
 func NewSliceQueue[T any](cap int) *SliceQueue[T] {
 	mutex := &sync.RWMutex{}
-	return &SliceQueue[T]{
+	res := &SliceQueue[T]{
 		data:  make([]T, cap),
 		mutex: mutex,
 		//notFull:  sync.NewCond(mutex),
 		//notEmpty: sync.NewCond(mutex),
+		// en 入队
 		enqueue: semaphore.NewWeighted(int64(cap)),
+		// de 出队
 		dequeue: semaphore.NewWeighted(int64(cap)),
 	}
+	//fmt.Println("de 许可清零")
+	_ = res.dequeue.Acquire(context.TODO(), int64(cap))
+	return res
 }
 
 // In 因为是ring buffer 所以头标记出 tail 下一个进来可以被使用的位置
 func (s *SliceQueue[T]) In(ctx context.Context, v T) error {
+	//使用了enqueue.Acquire方法来获取一个许可 n 代表获取量为1
+	//fmt.Println("去en取一个许可")
 
-	err := s.enqueue.Acquire(nil, 1)
+	err := s.enqueue.Acquire(ctx, 1)
 	if err != nil {
 		return err
 	}
 
 	//但凡到了这里，就相当于你已经预留一个座位
-
+	//
+	//fmt.Println("拿到锁了")
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	// 任务没中断
+
 	if ctx.Err() != nil {
 		s.enqueue.Release(1)
+		fmt.Println(ctx.Err())
 		return ctx.Err()
 	}
-
+	// 判断一下有没有中断
+	//fmt.Println("判断一下有没有中断")
 	// 满的
 	//if s.isFull() {
 	//	// 我就在这等着
@@ -75,7 +87,10 @@ func (s *SliceQueue[T]) In(ctx context.Context, v T) error {
 	// 我放了一个，我要通知另外一个准备出队的人
 	//s.cond.Release(1)
 	//s.notEmpty.Signal()
+	//dequeue 出队
+	//fmt.Println("出队，往de里面还一个许可？")
 	s.dequeue.Release(1)
+	//fmt.Println("出队成功")
 	return nil
 }
 
@@ -145,7 +160,7 @@ func (s *SliceQueue[T]) Pop(ctx context.Context) (T, error) {
 		s.head = 0
 	}
 	s.enqueue.Release(1)
-	fmt.Println(input)
+	//fmt.Println(input)
 	return input, nil
 }
 
